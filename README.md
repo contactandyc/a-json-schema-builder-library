@@ -1,160 +1,192 @@
-# a-json-schema-library
+# A JSON Schema Builder Library
 
-High-performance C bitset implementations with two flavors:
+Tiny C helpers for **programmatically building JSON Schema documents** using [`a-json-library`](https://github.com/) values and an `aml_pool_t` memory pool.
 
-1. **Fixed-size `abitset_t`** – size chosen at init, supports rich bitwise ops. Memory allocated from an **a-memory-library** `aml_pool_t`.
-2. **Auto-expanding `abitset_expandable_t`** – grows automatically on `set` / `unset`; simpler API (no explicit bitwise combine helpers) and independent of `aml_pool_t`.
-
-Both provide fast bit access, counting, serialization to/from contiguous 64‑bit word arrays, and predictable O(1) operations (aside from occasional resize in the expandable variant).
+* Focus: composing schemas (objects, arrays, strings, numbers, refs, combinators) with a small, null‑safe API.
+* Keywords covered include common JSON Schema fields and 2020‑12 style `$defs`, `$anchor`, and `$dynamic*` helpers.
 
 ---
 
-## Features
+## Requirements
 
-| Capability                           | `abitset_t`                          | `abitset_expandable_t`            |
-| ------------------------------------ | ------------------------------------ | --------------------------------- |
-| Fixed size                           | ✅                                    | ❌ (auto-grows)                    |
-| Uses `aml_pool_t`                    | ✅                                    | ❌                                 |
-| Bit get/set/unset                    | ✅                                    | ✅                                 |
-| Boolean assign (`abitset_boolean`)   | ✅                                    | ❌                                 |
-| Count bits set                       | ✅ (`abitset_count`)                  | ✅ (`abitset_expandable_count`)    |
-| Count & zero                         | ✅ (`abitset_count_and_zero`)         | ❌                                 |
-| First set bit                        | ✅ (`abitset_first_enabled`)          | ❌ (can be added externally)       |
-| Bulk set all true/false              | ✅ (`abitset_true` / `abitset_false`) | ❌ (loop externally)               |
-| Bitwise ops AND / OR / AND-NOT / NOT | ✅                                    | ❌ (operate manually after `repr`) |
-| Serialization (`*_repr`)             | ✅                                    | ✅                                 |
-| Load from representation             | ✅ (`abitset_load`)                   | ✅ (`abitset_expandable_load`)     |
+* C99 or later
+* \[`a-json-library`]\(header includes `a-json-library/ajson.h`)
+* \[`a-memory-library`]\(header includes `a-memory-library/aml_pool.h`)
 
 ---
 
-## API Summary
+## Build
 
-### Fixed-size (`abitset.h`)
+```bash
+# Compile the library object
+cc -std=c99 -Iinclude -c src/ajsb.c
 
-Initialization & lifecycle:
+# Link it with your app plus the ajson/aml libraries (names vary by setup)
+cc app.c ajsb.o -o app $(pkg-config --libs ...)   # adjust as needed
+```
+
+CMake (minimal):
+
+```cmake
+add_library(ajsb src/ajsb.c)
+target_include_directories(ajsb PUBLIC include)
+target_link_libraries(ajsb PUBLIC ajson aml) # adjust to your lib names
+```
+
+---
+
+## Quick start
 
 ```c
-abitset_t *bs = abitset_init(pool, size_bits);
-abitset_t *copy = abitset_copy(pool, bs);
-uint32_t n = abitset_size(bs);
-uint64_t *words = abitset_repr(bs);        // length = ceil(n / 64.0)
-abitset_t *loaded = abitset_load(pool, words, n, /*make_copy=*/true);
+#include "a-json-schema-builder-library/ajsb.h"
+
+/* Assume you have an aml_pool_t* p from your allocator setup. */
+
+ajson_t *user = ajsb_object(p);
+ajsb_set_schema(p, user, "https://json-schema.org/draft/2020-12/schema");
+
+/* properties.email: string, format email */
+ajson_t *email = ajsb_string(p);
+ajsb_string_format(p, email, "email");
+ajsb_prop(p, user, "email", email);
+
+/* properties.age: integer, minimum 0 (inclusive) */
+ajson_t *age = ajsb_integer(p);
+ajsb_number_min(p, age, 0, /*exclusive=*/false);
+ajsb_prop(p, user, "age", age);
+
+/* properties.roles: array of enum strings, minItems=1, uniqueItems=true */
+const char *role_vals[] = {"admin","staff","user"};
+ajson_t *role = ajsb_string(p);
+ajsb_string_enum(p, role, 3, role_vals);
+
+ajson_t *roles = ajsb_array(p, role);
+ajsb_array_min_items(p, roles, 1);
+ajsb_array_unique(p, roles, true);
+ajsb_prop(p, user, "roles", roles);
+
+/* $defs + $ref for a UUID-ish id */
+ajson_t *uuid = ajsb_string(p);
+ajsb_string_pattern(p, uuid, "^[0-9a-fA-F-]{36}$");
+ajsb_defs_add(p, user, "uuid", uuid);
+ajsb_prop(p, user, "id", ajsb_ref(p, "#/$defs/uuid"));
+
+/* required + disallow additionalProperties */
+const char *req[] = {"email","age"};
+ajsb_required(p, user, 2, req);
+ajsb_additional_properties(p, user, false);
+
+/* serialize */
+puts(ajsb_stringify(p, user));
 ```
 
-Bit ops:
+Output (pretty-printed for readability):
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "email": { "type": "string", "format": "email" },
+    "age": { "type": "integer", "minimum": 0 },
+    "roles": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["admin","staff","user"] },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "id": { "$ref": "#/$defs/uuid" }
+  },
+  "required": ["email","age"],
+  "additionalProperties": false,
+  "$defs": {
+    "uuid": { "type": "string", "pattern": "^[0-9a-fA-F-]{36}$" }
+  }
+}
+```
+
+---
+
+## API (brief)
+
+### Primitives
 
 ```c
-abitset_set(bs, id);
-abitset_unset(bs, id);
-abitset_boolean(bs, id, true_or_false);
-bool on = abitset_enabled(bs, id);
-uint32_t c = abitset_count(bs);
-uint32_t c_and_reset = abitset_count_and_zero(bs);
-int32_t first = abitset_first_enabled(bs);
-abitset_true(bs);  // all 1s
-abitset_false(bs); // all 0s
-abitset_not(bs);
-abitset_and(dest, src);
-abitset_or(dest, src);
-abitset_and_not(dest, mask);
+ajson_t *ajsb_object(aml_pool_t *p);
+ajson_t *ajsb_array(aml_pool_t *p, ajson_t *items_schema);
+ajson_t *ajsb_string(aml_pool_t *p);
+ajson_t *ajsb_number(aml_pool_t *p);
+ajson_t *ajsb_integer(aml_pool_t *p);
+ajson_t *ajsb_boolean(aml_pool_t *p);
+ajson_t *ajsb_null(aml_pool_t *p);
+ajson_t *ajsb_ref(aml_pool_t *p, const char *ref);
 ```
 
-### Expandable (`abitset_expandable.h`)
+### Object helpers
 
 ```c
-abitset_expandable_t *ebs = abitset_expandable_init();
-uint32_t n = abitset_expandable_size(ebs);      // current capacity in bits
-abitset_expandable_set(ebs, id);                // grows if id beyond current size
-abitset_expandable_unset(ebs, id);              // also grows to cover id, then clears
-bool on = abitset_expandable_enabled(ebs, id);
-uint32_t c = abitset_expandable_count(ebs);
-uint64_t *words = abitset_expandable_repr(ebs);
-abitset_expandable_t *loaded = abitset_expandable_load(words, n);
-abitset_expandable_destroy(ebs);
+void ajsb_prop(aml_pool_t *p, ajson_t *obj, const char *name, ajson_t *schema);
+void ajsb_required(aml_pool_t *p, ajson_t *obj, size_t n, const char *const *names);
+void ajsb_additional_properties(aml_pool_t *p, ajson_t *obj, bool allowed);
+void ajsb_defs_add(aml_pool_t *p, ajson_t *root_obj, const char *name, ajson_t *schema);
 ```
 
----
-
-## Serialization Format
-
-Both `*_repr` functions return a newly allocated array of 64‑bit words (least significant bits correspond to lower bit indices). For `abitset_t` the array length is fixed; for `abitset_expandable_t` it reflects the current size. Use the allocator pairings defined by **a-memory-library** (e.g., `aml_free`) for deallocation where noted in headers.
-
----
-
-## Choosing an Implementation
-
-* Use **`abitset_t`** when you know the maximum size ahead of time, want pooled allocations, and need bulk / bitwise operations.
-* Use **`abitset_expandable_t`** when maximum size is unknown or unbounded and you only need fundamental per-bit operations plus counting & serialization.
-
-You can mix both: prototype with expandable, then switch to fixed-size for tighter control.
-
----
-
-## Complexity & Performance Notes
-
-* Single bit set/test/unset: O(1).
-* Counting: O(n/wordSize). `abitset_count_and_zero` fuses count+clear, reducing passes.
-* Expand growth: amortized; infrequent reallocation when a higher index is touched.
-* Bitwise ops provided only on fixed-size variant for speed and simplicity.
-
----
-
-## Example (Fixed-size)
+### String helpers
 
 ```c
-#include "a-bitset-library/abitset.h"
-#include "a-memory-library/aml_pool.h"
-
-aml_pool_t *pool = aml_pool_create();
-abitset_t *flags = abitset_init(pool, 1000);
-abitset_true(flags);              // mark all
-abitset_unset(flags, 42);         // clear one
-if (abitset_enabled(flags, 42)) { /* ... */ }
-abitset_not(flags);               // flip all bits
-uint32_t active = abitset_count(flags);
-uint64_t *data = abitset_repr(flags); // serialize
-// ... write data, then free with aml_free(data) per allocator contract
+void ajsb_string_format (aml_pool_t *p, ajson_t *str_schema, const char *format);
+void ajsb_string_pattern(aml_pool_t *p, ajson_t *str_schema, const char *regex);
+void ajsb_string_enum   (aml_pool_t *p, ajson_t *str_schema, size_t n, const char *const *values);
 ```
 
-## Example (Expandable)
+### Number / Integer helpers
 
 ```c
-#include "a-bitset-library/abitset_expandable.h"
-
-abitset_expandable_t *dyn = abitset_expandable_init();
-abitset_expandable_set(dyn, 10);
-abitset_expandable_set(dyn, 500000); // auto-resizes
-uint32_t ones = abitset_expandable_count(dyn);
-uint64_t *repr = abitset_expandable_repr(dyn);
-// persist repr then free with aml_free(repr)
-abitset_expandable_destroy(dyn);
+void ajsb_number_min(aml_pool_t *p, ajson_t *num_schema, double min, bool exclusive);
+void ajsb_number_max(aml_pool_t *p, ajson_t *num_schema, double max, bool exclusive);
 ```
+
+### Array helpers
+
+```c
+void ajsb_array_min_items(aml_pool_t *p, ajson_t *arr_schema, int min_items);
+void ajsb_array_max_items(aml_pool_t *p, ajson_t *arr_schema, int max_items);
+void ajsb_array_unique   (aml_pool_t *p, ajson_t *arr_schema, bool on);
+```
+
+### Combinators
+
+```c
+ajson_t *ajsb_anyOf(aml_pool_t *p, size_t n, ajson_t *const *schemas);
+ajson_t *ajsb_oneOf(aml_pool_t *p, size_t n, ajson_t *const *schemas);
+ajson_t *ajsb_allOf(aml_pool_t *p, size_t n, ajson_t *const *schemas);
+```
+
+### IDs, anchors, defs
+
+```c
+ajson_t *ajsb_defs_ensure(aml_pool_t *p, ajson_t *root_obj);
+void ajsb_defs_set(aml_pool_t *p, ajson_t *root_obj, const char *name, ajson_t *schema);
+void ajsb_set_id(aml_pool_t *p, ajson_t *schema, const char *uri);
+void ajsb_set_schema(aml_pool_t *p, ajson_t *schema, const char *uri);
+void ajsb_anchor(aml_pool_t *p, ajson_t *schema, const char *name);
+void ajsb_dynamic_anchor(aml_pool_t *p, ajson_t *schema, const char *name);
+ajson_t *ajsb_dynamic_ref(aml_pool_t *p, const char *ref);
+```
+
+### Utility
+
+```c
+const char *ajsb_stringify(aml_pool_t *p, ajson_t *schema); /* wraps ajson_stringify */
+```
+
+> **Notes**
+>
+> * All functions are defensive: null/empty inputs are ignored where sensible.
+> * Builders return `ajson_t*` nodes owned by `aml_pool_t`. Free the pool to free everything.
 
 ---
 
-## Error Handling
+## License
 
-Functions assume valid pointers; out-of-range indices on the expandable version trigger growth, while on the fixed-size version they are undefined behavior (caller must guard). Always ensure `id < abitset_size()` for `abitset_t`.
-
----
-
-## License & Attribution
-
-Apache-2.0. SPDX headers embedded:
-
-```
-SPDX-FileCopyrightText: 2023-2025 Andy Curtis
-SPDX-FileCopyrightText: 2024-2025 Knode.ai
-SPDX-License-Identifier: Apache-2.0
-```
-
----
-
-## Roadmap Ideas
-
-* Optional iterator for set bits (pop iteration).
-* Bitwise ops for expandable version.
-* Inline helpers/macros for hot paths.
-* SIMD-accelerated population count when available.
-
-Contributions & issues welcome.
+Apache-2.0 © 2025 Andy Curtis (`SPDX-License-Identifier: Apache-2.0`).
