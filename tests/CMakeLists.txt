@@ -21,7 +21,7 @@ add_executable(test_ajsb  src/test_ajsb.c)
 list(APPEND TEST_EXECUTABLES test_ajsb)
 
 set_target_properties(test_ajsb PROPERTIES
-  C_STANDARD 17
+  C_STANDARD 23
   C_STANDARD_REQUIRED YES
 )
 if("CXX" IN_LIST CMAKE_PROJECT_LANGUAGES)
