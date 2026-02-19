@@ -25,11 +25,19 @@ ajson_t *ajsb_ref     (aml_pool_t *p, const char *ref);       /* { "$ref": "<ref
 
 /* ── Object helpers ──────────────────────────────────────────────────────── */
 void ajsb_prop(aml_pool_t *p, ajson_t *obj, const char *name, ajson_t *schema);
+/* Convenience: Adds the property and immediately adds 'name' to the "required" array */
+void ajsb_prop_required(aml_pool_t *p, ajson_t *obj, const char *name, ajson_t *schema);
+
 void ajsb_required(aml_pool_t *p, ajson_t *obj, size_t n, const char *const *names);
 void ajsb_additional_properties(aml_pool_t *p, ajson_t *obj, bool allowed);
 
 /* $defs helpers */
 void ajsb_defs_add(aml_pool_t *p, ajson_t *root_obj, const char *name, ajson_t *schema);
+
+/* ── Metadata helpers ───────────────────────────────────────────────────── */
+void ajsb_title      (aml_pool_t *p, ajson_t *schema, const char *title);
+void ajsb_description(aml_pool_t *p, ajson_t *schema, const char *description);
+void ajsb_default_str(aml_pool_t *p, ajson_t *schema, const char *def_val);
 
 /* ── String helpers ─────────────────────────────────────────────────────── */
 void ajsb_string_format (aml_pool_t *p, ajson_t *str_schema, const char *format); /* "email","date","time",… */
@@ -64,8 +72,8 @@ void ajsb_anchor          (aml_pool_t *p, ajson_t *schema, const char *name);  /
 void ajsb_dynamic_anchor  (aml_pool_t *p, ajson_t *schema, const char *name);  /* sets "$dynamicAnchor" */
 
 /* Refs */
-ajson_t *ajsb_ref         (aml_pool_t *p, const char *ref);            /* { "$ref": "<ref>" } */
-ajson_t *ajsb_dynamic_ref (aml_pool_t *p, const char *ref);            /* { "$dynamicRef": "<ref>" } */
+ajson_t *ajsb_ref         (aml_pool_t *p, const char *ref);             /* { "$ref": "<ref>" } */
+ajson_t *ajsb_dynamic_ref (aml_pool_t *p, const char *ref);             /* { "$dynamicRef": "<ref>" } */
 
 
 /* ── Utility ────────────────────────────────────────────────────────────── */

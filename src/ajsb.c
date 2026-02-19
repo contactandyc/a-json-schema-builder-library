@@ -3,7 +3,7 @@
 
 #include "a-json-schema-builder-library/ajsb.h"
 
-/* replace-if-exists, else append */
+/* replace-if-exists, else append. Used internally for hardcoded schema keys. */
 static inline void kv_set(ajson_t *obj, const char *k, ajson_t *v) {
   ajsono_set(obj, k, v, /*copy_key=*/false);
 }
@@ -44,7 +44,21 @@ void ajsb_prop(aml_pool_t *p, ajson_t *obj, const char *name, ajson_t *schema) {
     props = ajsono(p);
     kv_set(obj, "properties", props);
   }
-  ajsono_set(props, name, schema, false);
+  // FIX: User-provided 'name' MUST be copied into the pool.
+  ajsono_set(props, name, schema, true);
+}
+
+void ajsb_prop_required(aml_pool_t *p, ajson_t *obj, const char *name, ajson_t *schema) {
+  if (!p || !obj || !name || !*name || !schema) return;
+  ajsb_prop(p, obj, name, schema);
+
+  // Auto-append to "required" array
+  ajson_t *req = ajsono_scan(obj, "required");
+  if (!req || !ajson_is_array(req)) {
+      req = ajsona(p);
+      kv_set(obj, "required", req);
+  }
+  ajsona_append(req, ajson_str(p, name));
 }
 
 void ajsb_required(aml_pool_t *p, ajson_t *obj, size_t n, const char *const *names) {
@@ -68,7 +82,21 @@ void ajsb_defs_add(aml_pool_t *p, ajson_t *root_obj, const char *name, ajson_t *
     defs = ajsono(p);
     kv_set(root_obj, "$defs", defs);
   }
-  ajsono_set(defs, name, schema, false);
+  // FIX: User-provided 'name' MUST be copied into the pool.
+  ajsono_set(defs, name, schema, true);
+}
+
+/* ── Metadata helpers ───────────────────────────────────────────────────── */
+void ajsb_title(aml_pool_t *p, ajson_t *schema, const char *title) {
+  if (schema && title) kv_set(schema, "title", ajson_str(p, title));
+}
+
+void ajsb_description(aml_pool_t *p, ajson_t *schema, const char *description) {
+  if (schema && description) kv_set(schema, "description", ajson_str(p, description));
+}
+
+void ajsb_default_str(aml_pool_t *p, ajson_t *schema, const char *def_val) {
+  if (schema && def_val) kv_set(schema, "default", ajson_str(p, def_val));
 }
 
 /* ── String helpers ─────────────────────────────────────────────────────── */
@@ -152,7 +180,8 @@ ajson_t *ajsb_defs_ensure(aml_pool_t *p, ajson_t *root_obj) {
 void ajsb_defs_set(aml_pool_t *p, ajson_t *root_obj, const char *name, ajson_t *schema) {
   if (!p || !root_obj || !name || !*name || !schema) return;
   ajson_t *defs = ajsb_defs_ensure(p, root_obj);
-  ajsono_set(defs, name, schema, /*copy_key=*/false);  /* replace-or-add */
+  // FIX: User-provided 'name' MUST be copied into the pool.
+  ajsono_set(defs, name, schema, /*copy_key=*/true);  /* replace-or-add */
 }
 
 void ajsb_set_id(aml_pool_t *p, ajson_t *schema, const char *uri) {

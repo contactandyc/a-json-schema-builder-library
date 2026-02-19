@@ -6,6 +6,7 @@
 #include "a-memory-library/aml_pool.h"
 #include "the-macro-library/macro_test.h"
 
+#include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
 
@@ -317,6 +318,66 @@ MACRO_TEST(ajsb_demo_dynamic_refs) {
   aml_pool_destroy(p);
 }
 
+/* ---------- 10) metadata_helpers ---------- */
+MACRO_TEST(ajsb_metadata_helpers) {
+  aml_pool_t *p = aml_pool_init(1024);
+
+  ajson_t *obj = ajsb_object(p);
+  ajsb_title(p, obj, "User Profile");
+  ajsb_description(p, obj, "A JSON representation of a user profile for the LLM.");
+  ajsb_default_str(p, obj, "{}");
+
+  const char *j = J(p, obj);
+  HAS(j, "\"title\":\"User Profile\"");
+  HAS(j, "\"description\":\"A JSON representation of a user profile for the LLM.\"");
+  HAS(j, "\"default\":\"{}\"");
+
+  aml_pool_destroy(p);
+}
+
+/* ---------- 11) convenience_prop_required ---------- */
+MACRO_TEST(ajsb_convenience_prop_required) {
+  aml_pool_t *p = aml_pool_init(1024);
+
+  ajson_t *obj = ajsb_object(p);
+  ajsb_prop_required(p, obj, "username", ajsb_string(p));
+  ajsb_prop_required(p, obj, "age", ajsb_integer(p));
+
+  const char *j = J(p, obj);
+  // It should correctly add both properties
+  HAS(j, "\"username\":{\"type\":\"string\"}");
+  HAS(j, "\"age\":{\"type\":\"integer\"}");
+
+  // It should automatically append to the required array
+  HAS(j, "\"required\":[\"username\",\"age\"]");
+
+  aml_pool_destroy(p);
+}
+
+/* ---------- 12) dynamic_keys_memory_safety ---------- */
+MACRO_TEST(ajsb_dynamic_keys_memory_safety) {
+  aml_pool_t *p = aml_pool_init(1024);
+  ajson_t *obj = ajsb_object(p);
+
+  // We simulate dynamic key generation that goes out of scope.
+  // If the library fails to copy the key (copy_key=false), the output will be corrupted.
+  {
+      char temp_key[32];
+      sprintf(temp_key, "dynamic_field_%d", 42);
+      ajsb_prop(p, obj, temp_key, ajsb_string(p));
+
+      // Wipe the memory to guarantee it's destroyed from the stack/buffer
+      memset(temp_key, 0, sizeof(temp_key));
+  }
+
+  const char *j = J(p, obj);
+
+  // If memory wasn't copied into the pool, this will fail or segfault.
+  HAS(j, "\"dynamic_field_42\":{\"type\":\"string\"}");
+
+  aml_pool_destroy(p);
+}
+
 /* ---------- Runner ---------- */
 int main(void) {
   macro_test_case tests[64];
@@ -331,6 +392,11 @@ int main(void) {
   MACRO_ADD(tests, ajsb_format_block_weather);
   MACRO_ADD(tests, ajsb_validation_showcase);
   MACRO_ADD(tests, ajsb_demo_dynamic_refs);
+
+  /* New Tests */
+  MACRO_ADD(tests, ajsb_metadata_helpers);
+  MACRO_ADD(tests, ajsb_convenience_prop_required);
+  MACRO_ADD(tests, ajsb_dynamic_keys_memory_safety);
 
   macro_run_all("a-json-schema-builder/ajsb_examples", tests, test_count);
   return 0;
