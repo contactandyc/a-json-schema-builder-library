@@ -17,11 +17,23 @@ option(A_ENABLE_COVERAGE "Enable code coverage instrumentation" OFF)
 
 find_library(M_LIB m)
 
-# ---- Test executables ----
-set(TEST_EXECUTABLES "")
-add_executable(test_ajsb  src/test_ajsb.c)
+find_package(a_json_library CONFIG REQUIRED)
 
-target_include_directories(test_ajsb PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR}/src)
+# Fallback for standalone test builds (when not included via add_subdirectory)
+if(NOT TARGET a_json_schema_builder_library::a_json_schema_builder_library)
+  find_package(a_json_schema_builder_library CONFIG REQUIRED)
+endif()
+
+set(TEST_EXECUTABLES "")
+
+# ---- Targets ----
+add_executable(test_ajsb
+  src/test_ajsb.c
+)
+
+target_include_directories(test_ajsb PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
 
 list(APPEND TEST_EXECUTABLES test_ajsb)
 
@@ -36,9 +48,7 @@ if("CXX" IN_LIST CMAKE_PROJECT_LANGUAGES)
   )
 endif()
 
-if(NOT TARGET a_json_schema_builder_library::a_json_schema_builder_library)
-  find_package(a_json_schema_builder_library CONFIG REQUIRED)
-endif()
+target_link_libraries(test_ajsb PRIVATE a_json_library::a_json_library)
 target_link_libraries(test_ajsb PRIVATE a_json_schema_builder_library::a_json_schema_builder_library)
 
 if(M_LIB)
