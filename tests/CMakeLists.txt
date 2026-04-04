@@ -40,13 +40,9 @@ list(APPEND TEST_EXECUTABLES test_ajsb)
 set_target_properties(test_ajsb PROPERTIES
   C_STANDARD 23
   C_STANDARD_REQUIRED YES
+  CXX_STANDARD 17
+  CXX_STANDARD_REQUIRED YES
 )
-if("CXX" IN_LIST CMAKE_PROJECT_LANGUAGES)
-  set_target_properties(test_ajsb PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED YES
-  )
-endif()
 
 target_link_libraries(test_ajsb PRIVATE a_json_library::a_json_library)
 target_link_libraries(test_ajsb PRIVATE a_json_schema_builder_library::a_json_schema_builder_library)
