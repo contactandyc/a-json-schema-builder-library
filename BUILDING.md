@@ -1,7 +1,7 @@
 # BUILDING
 
 This project: **A JSON Schema Builder Library**
-Version: **0.1.2**
+Version: **0.1.4**
 
 ## Local build
 
