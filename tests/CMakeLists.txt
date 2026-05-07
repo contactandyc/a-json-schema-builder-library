@@ -9,6 +9,11 @@ cmake_minimum_required(VERSION 3.20)
 
 project(a_json_schema_builder_library_tests LANGUAGES C)
 
+if(CMAKE_PREFIX_PATH)
+  include_directories("${CMAKE_PREFIX_PATH}/include")
+  link_directories("${CMAKE_PREFIX_PATH}/lib")
+endif()
+
 set(A_BUILD_VARIANT "debug" CACHE STRING
     "Variant to link via a_json_schema_builder_library::a_json_schema_builder_library (debug|memory|static|shared)")
 set_property(CACHE A_BUILD_VARIANT PROPERTY STRINGS debug memory static shared)
@@ -27,12 +32,17 @@ endif()
 set(TEST_EXECUTABLES "")
 
 # ---- Targets ----
+# ==============================================================================
+# test_ajsb Target (Standard Test)
+# ==============================================================================
 add_executable(test_ajsb
   src/test_ajsb.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ajsb.c
 )
 
 target_include_directories(test_ajsb PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../src
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include
 )
 
 list(APPEND TEST_EXECUTABLES test_ajsb)
